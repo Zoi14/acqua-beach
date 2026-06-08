@@ -238,8 +238,9 @@ export default function BeachPage() {
             });
           }
         }
+      } else {
         // Reset alert if umbrella freed
-        if (u.status === 'free') alertedRef.current.delete(u.id);
+        alertedRef.current.delete(u.id);
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
