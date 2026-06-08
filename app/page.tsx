@@ -1,56 +1,48 @@
 'use client';
-
 import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 
-// ── Design tokens (ACQUA palette) ──────────────────────────
-const C = {
-  navy:       '#0d2b3e',
-  navyLight:  '#1a4a63',
-  teal:       '#1a6b7c',
-  tealLight:  '#2a8fa4',
-  gold:       '#c9a84c',
-  goldLight:  '#e4c46e',
-  cream:      '#f7f3ee',
-  sand:       '#e8ddd0',
-  sandDark:   '#d4c4b0',
-  white:      '#ffffff',
-  text:       '#1a2e3a',
-  textMuted:  '#5a7a8a',
-  textLight:  '#8fa8b5',
-};
+const supabase = createClient(
+  'https://owomepqgtxrmkylzmjgp.supabase.co',
+  'sb_publishable_9IwPnnK_8PDjPjo6QR76kg_dsxFXQqP'
+);
 
-// ── Types ──────────────────────────────────────────────────
 type UmbrellaStatus = 'free' | 'occupied' | 'reserved';
 
 interface HistoryEntry {
   id: string;
-  umbrellaNumber: number;
+  umbrella_number: number;
   premium: boolean;
-  customerName?: string;
+  customer_name?: string;
   people?: number;
-  arrivalTime?: string;
-  departureTime: string;
+  arrival_time?: string;
+  departure_time: string;
   notes?: string;
-  date: string; // YYYY-MM-DD
+  date: string;
 }
 
 interface Umbrella {
   id: string;
   number: number;
-  row: number;
-  col: number;
+  row_num: number;
+  col_num: number;
   status: UmbrellaStatus;
   premium: boolean;
   people?: number;
-  customerName?: string;
-  arrivalTime?: string;
+  customer_name?: string;
+  arrival_time?: string;
   notes?: string;
 }
 
-// 37 umbrellas: 4×8 + 1×5. Premium: col=1 in rows 1-4, ALL in row 5
 const ROW_COUNTS = [8, 8, 8, 8, 5];
-const PRICE_PER_HOUR = 5;
 const BOSS_PASSWORD = 'boss123';
+
+const C = {
+  navy: '#0d2b3e', navyLight: '#1a4a63', teal: '#1a6b7c',
+  gold: '#c9a84c', goldLight: '#e4c46e', cream: '#f7f3ee', sand: '#e8ddd0',
+  sandDark: '#d4c4b0', white: '#ffffff', text: '#1a2e3a',
+  textMuted: '#5a7a8a', textLight: '#8fa8b5',
+};
 
 const STATUS = {
   free:     { label: 'Ελεύθερη',     color: '#2ecc71', bg: '#eafaf1', border: '#a9dfbf', text: '#1a7a40' },
@@ -58,14 +50,17 @@ const STATUS = {
   reserved: { label: 'Κρατημένη',    color: C.gold,    bg: '#fdf8ec', border: C.goldLight, text: '#7d6025' },
 };
 
-function generateUmbrellas(): Umbrella[] {
+function generateInitialUmbrellas(): Umbrella[] {
   const out: Umbrella[] = [];
   let n = 1;
   ROW_COUNTS.forEach((count, ri) => {
     const row = ri + 1;
     const lastRow = row === ROW_COUNTS.length;
     for (let c = 1; c <= count; c++) {
-      out.push({ id: `${row}-${c}`, number: n++, row, col: c, status: 'free', premium: lastRow || c === 1 });
+      out.push({
+        id: `${row}-${c}`, number: n++, row_num: row, col_num: c,
+        status: 'free', premium: lastRow || c === 1,
+      });
     }
   });
   return out;
@@ -74,592 +69,445 @@ function generateUmbrellas(): Umbrella[] {
 function getNow() {
   return new Date().toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
 }
-
 function getToday() {
-  return new Date().toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return new Date().toLocaleDateString('el-GR');
 }
 
-function logHistory(u: Umbrella, prev: HistoryEntry[]): HistoryEntry[] {
-  if (u.status === 'free' || !u.arrivalTime) return prev;
-  const entry: HistoryEntry = {
-    id: `${Date.now()}`,
-    umbrellaNumber: u.number,
-    premium: u.premium,
-    customerName: u.customerName,
-    people: u.people,
-    arrivalTime: u.arrivalTime,
-    departureTime: getNow(),
-    notes: u.notes,
-    date: getToday(),
-  };
-  const next = [entry, ...prev].slice(0, 200);
-  localStorage.setItem('acqua-history', JSON.stringify(next));
-  return next;
-}
-
-// ── Page ───────────────────────────────────────────────────
-export default function BeachPage() {
-  const [umbrellas, setUmbrellas]   = useState<Umbrella[]>(() => generateUmbrellas());
-  const [history, setHistory]       = useState<HistoryEntry[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [selected, setSelected]     = useState<Umbrella | null>(null);
-  const [role, setRole]             = useState<'employee' | 'boss'>('employee');
-  const [showLogin, setShowLogin]   = useState(false);
-  const [password, setPassword]     = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [clock, setClock]           = useState('');
-
-  useEffect(() => {
-    document.title = 'ACQUA Beach | Ομπρέλες';
-    const saved = localStorage.getItem('acqua-beach-v1');
-    if (saved) {
-      try {
-        const p = JSON.parse(saved) as Umbrella[];
-        if (p[0]?.premium !== undefined) {
-          // Ensure row 5 is always all-premium (fix stale data)
-          const fixed = p.map(u => ({ ...u, premium: u.row === 5 ? true : u.premium }));
-          setUmbrellas(fixed);
-        }
-      } catch {}
-    }
-    const savedHistory = localStorage.getItem('acqua-history');
-    if (savedHistory) {
-      try { setHistory(JSON.parse(savedHistory)); } catch {}
-    }
-  }, []);
-
-  useEffect(() => {
-    if (umbrellas.length) localStorage.setItem('acqua-beach-v1', JSON.stringify(umbrellas));
-  }, [umbrellas]);
-
-  useEffect(() => {
-    const tick = () => setClock(new Date().toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  const stats = {
-    total:    umbrellas.length,
-    free:     umbrellas.filter(u => u.status === 'free').length,
-    occupied: umbrellas.filter(u => u.status === 'occupied').length,
-    reserved: umbrellas.filter(u => u.status === 'reserved').length,
-    people:   umbrellas.reduce((s, u) => s + (u.people || 0), 0),
-  };
-  const occupancy = Math.round(((stats.occupied + stats.reserved) / stats.total) * 100);
-
-  const quickToggle = (u: Umbrella, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const next: UmbrellaStatus = u.status === 'free' ? 'occupied' : 'free';
-    if (next === 'free') setHistory(prev => logHistory(u, prev));
-    setUmbrellas(prev => prev.map(x => x.id === u.id
-      ? { ...x, status: next, arrivalTime: next === 'occupied' ? getNow() : undefined, customerName: next === 'free' ? undefined : x.customerName, people: next === 'free' ? undefined : x.people }
-      : x));
-  };
-
-  const handleStatusChange = (s: UmbrellaStatus) => {
-    setSelected(prev => prev ? {
-      ...prev, status: s,
-      arrivalTime: s !== 'free' ? (prev.arrivalTime || getNow()) : undefined,
-    } : null);
-  };
-
-  const handleSave = () => {
-    if (!selected) return;
-    const prev = umbrellas.find(u => u.id === selected.id);
-    if (prev && prev.status !== 'free' && selected.status === 'free') {
-      setHistory(h => logHistory(prev, h));
-    }
-    setUmbrellas(prev => prev.map(u => u.id === selected.id ? { ...selected } : u));
-    setSelected(null);
-  };
-
-  const resetDay = () => {
-    if (!confirm('Επαναφορά ΟΛΩΝ σε ελεύθερες;')) return;
-    setUmbrellas(prev => prev.map(u => ({ ...u, status: 'free', customerName: undefined, arrivalTime: undefined, notes: undefined })));
-  };
-
-  const handleLogin = () => {
-    if (password === BOSS_PASSWORD) { setRole('boss'); setShowLogin(false); setPassword(''); setLoginError(''); }
-    else setLoginError('Λάθος κωδικός');
-  };
-
-  const rowMap: Record<number, Umbrella[]> = {};
-  umbrellas.forEach(u => { rowMap[u.row] = rowMap[u.row] || []; rowMap[u.row].push(u); });
-  const rows = Object.keys(rowMap).map(Number).sort();
-  const occupiedList = umbrellas.filter(u => u.status !== 'free');
+// ── Umbrella Cell ──────────────────────────────────────────────────────────────
+function UmbrellaCell({ u, onTap, onQuickRelease }: {
+  u: Umbrella;
+  onTap: (u: Umbrella) => void;
+  onQuickRelease: (u: Umbrella) => void;
+}) {
+  const [hov, setHov] = useState(false);
+  const s = STATUS[u.status];
+  const busy = u.status !== 'free';
 
   return (
-    <div style={{ minHeight: '100vh', background: C.cream, fontFamily: "'Montserrat', 'Inter', system-ui, sans-serif", color: C.text }}>
-
-      {/* ── NAVBAR ── */}
-      <nav style={{ background: C.navy, borderBottom: `3px solid ${C.gold}` }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 58 }}>
-
-          {/* Logo area */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-              <span style={{ color: C.gold, fontWeight: 800, fontSize: 20, letterSpacing: '4px', lineHeight: 1, textTransform: 'uppercase' }}>ACQUA</span>
-              <span style={{ color: C.textLight, fontSize: 8, letterSpacing: '2.5px', textTransform: 'uppercase', lineHeight: 1, marginTop: 2 }}>Beach Bar Since 1999</span>
-            </div>
-            <div style={{ width: 1, height: 28, background: 'rgba(201,168,76,0.3)', margin: '0 4px' }} />
-            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, letterSpacing: '1.5px', textTransform: 'uppercase' }}>Ομπρέλες</span>
-          </div>
-
-          {/* Right side */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ color: C.gold, fontFamily: 'monospace', fontSize: 13, letterSpacing: 1, fontWeight: 600 }}>{clock}</div>
-            {role === 'boss' && (
-              <>
-                <button onClick={() => setShowHistory(h => !h)}
-                  style={{ background: showHistory ? `rgba(201,168,76,0.15)` : 'transparent', border: `1px solid rgba(201,168,76,0.4)`, color: C.gold, borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600, letterSpacing: '0.5px' }}>
-                  ΙΣΤΟΡΙΚΟ {history.length > 0 && `(${history.length})`}
-                </button>
-                <button onClick={resetDay}
-                  style={{ background: 'transparent', border: `1px solid rgba(231,76,60,0.4)`, color: '#e74c3c', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600, letterSpacing: '0.5px' }}>
-                  RESET
-                </button>
-              </>
-            )}
-            <button
-              onClick={() => role === 'employee' ? setShowLogin(true) : setRole('employee')}
-              style={{ background: role === 'boss' ? 'transparent' : `linear-gradient(135deg,${C.gold},${C.goldLight})`, border: `1px solid ${C.gold}`, color: role === 'boss' ? C.gold : C.navy, borderRadius: 6, padding: '6px 14px', fontSize: 11, fontWeight: 800, cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' }}
-            >
-              {role === 'boss' ? 'ΠΡΟΣΩΠΙΚΟ' : 'MANAGEMENT'}
-            </button>
-          </div>
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={() => onTap(u)}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        style={{
+          width: 62, height: 70, borderRadius: 14,
+          border: `2px solid ${hov ? s.color : s.border}`,
+          background: hov ? s.color + '28' : s.bg,
+          cursor: 'pointer', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          padding: '4px 2px', gap: 2, transition: 'all 0.15s',
+          boxShadow: hov ? `0 4px 14px ${s.color}44` : '0 1px 4px rgba(0,0,0,0.08)',
+          position: 'relative',
+        }}
+      >
+        {u.premium && (
+          <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9, color: C.gold }}>⭐</span>
+        )}
+        <div style={{
+          width: 24, height: 24, borderRadius: '50%',
+          background: s.color, color: '#fff',
+          fontSize: 11, fontWeight: 700,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>{u.number}</div>
+        <div style={{ fontSize: 16 }}>
+          {u.status === 'occupied' ? '🏖️' : u.status === 'reserved' ? '📋' : '☂️'}
         </div>
-      </nav>
+        {busy && u.arrival_time && (
+          <div style={{ fontSize: 8, color: s.text, fontWeight: 600, textAlign: 'center', lineHeight: 1.2 }}>
+            {u.arrival_time}{u.people ? `·${u.people}👤` : ''}
+          </div>
+        )}
+      </button>
+      {/* Quick release × */}
+      {busy && (
+        <button
+          onClick={e => { e.stopPropagation(); onQuickRelease(u); }}
+          style={{
+            position: 'absolute', top: -7, left: -7,
+            width: 20, height: 20, borderRadius: '50%',
+            background: '#e74c3c', color: '#fff',
+            border: '2px solid #fff', fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            padding: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.25)', zIndex: 5,
+          }}
+        >×</button>
+      )}
+    </div>
+  );
+}
 
-      {/* ── STATS ── */}
-      <div style={{ background: C.navyLight, borderBottom: `1px solid rgba(201,168,76,0.2)` }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '12px 16px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8, marginBottom: 10 }}>
-            {[
-              { label: 'ΣΥΝΟΛΟ',        value: stats.total,    color: C.gold,    sub: 'ομπρέλες' },
-              { label: 'ΕΛΕΥΘΕΡΕΣ',     value: stats.free,     color: '#2ecc71', sub: 'διαθέσιμες' },
-              { label: 'ΚΑΤΕΙΛΗΜΜΕΝΕΣ', value: stats.occupied, color: '#e74c3c', sub: 'σε χρήση' },
-              { label: 'ΚΡΑΤΗΜΕΝΕΣ',    value: stats.reserved, color: C.goldLight, sub: 'κράτηση' },
-              { label: 'ΑΤΟΜΑ',         value: stats.people,   color: C.tealLight,  sub: 'στην παραλία' },
-            ].map(s => (
-              <div key={s.label} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: '10px 8px', textAlign: 'center', border: `1px solid rgba(255,255,255,0.08)` }}>
-                <div style={{ fontSize: 26, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
-                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: 3 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.8px', whiteSpace: 'nowrap' }}>Πληρότητα</span>
-            <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 99, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${occupancy}%`, background: `linear-gradient(90deg,${C.gold},${C.goldLight})`, borderRadius: 99, transition: 'width 0.6s ease' }} />
-            </div>
-            <span style={{ fontSize: 13, fontWeight: 800, color: C.gold, minWidth: 36, textAlign: 'right' }}>{occupancy}%</span>
-          </div>
+// ── Main Page ──────────────────────────────────────────────────────────────────
+export default function BeachPage() {
+  const [umbrellas, setUmbrellas] = useState<Umbrella[]>([]);
+  const [history, setHistory]     = useState<HistoryEntry[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [sync, setSync]           = useState<'ok'|'busy'|'err'>('ok');
+
+  const [selected, setSelected]       = useState<Umbrella | null>(null);
+  const [modalStatus, setModalStatus] = useState<UmbrellaStatus>('free');
+  const [modalName, setModalName]     = useState('');
+  const [modalPeople, setModalPeople] = useState('');
+  const [modalNotes, setModalNotes]   = useState('');
+
+  const [isBoss, setIsBoss]     = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showPanel, setShowPanel] = useState(false);
+  const [bossPass, setBossPass]   = useState('');
+  const [panelTab, setPanelTab]   = useState<'stats'|'history'>('stats');
+
+  // ── Supabase helpers ─────────────────────────────────────────────────────────
+  async function fetchUmbrellas() {
+    const { data, error } = await supabase
+      .from('umbrellas').select('*').order('number');
+    if (error) { setSync('err'); setLoading(false); return; }
+    if (!data || data.length === 0) {
+      const init = generateInitialUmbrellas();
+      await supabase.from('umbrellas').insert(init);
+      setUmbrellas(init);
+    } else {
+      setUmbrellas(data as Umbrella[]);
+    }
+    setLoading(false);
+  }
+
+  async function fetchHistory() {
+    const { data } = await supabase
+      .from('history').select('*')
+      .order('created_at', { ascending: false }).limit(200);
+    if (data) setHistory(data as HistoryEntry[]);
+  }
+
+  async function pushUpdate(u: Umbrella) {
+    setSync('busy');
+    const { error } = await supabase.from('umbrellas').update(u).eq('id', u.id);
+    setSync(error ? 'err' : 'ok');
+  }
+
+  async function pushHistory(u: Umbrella) {
+    if (!u.arrival_time) return;
+    const entry: HistoryEntry = {
+      id: `${Date.now()}`,
+      umbrella_number: u.number, premium: u.premium,
+      customer_name: u.customer_name, people: u.people,
+      arrival_time: u.arrival_time, departure_time: getNow(),
+      notes: u.notes, date: getToday(),
+    };
+    await supabase.from('history').insert(entry);
+    setHistory(p => [entry, ...p].slice(0, 200));
+  }
+
+  // ── Real-time subscription ───────────────────────────────────────────────────
+  useEffect(() => {
+    fetchUmbrellas();
+    fetchHistory();
+
+    const ch = supabase.channel('beach-live')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'umbrellas' }, p => {
+        setUmbrellas(prev => prev.map(u => u.id === p.new.id ? p.new as Umbrella : u));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'umbrellas' }, p => {
+        setUmbrellas(prev => [...prev, p.new as Umbrella].sort((a, b) => a.number - b.number));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Modal helpers ────────────────────────────────────────────────────────────
+  function openModal(u: Umbrella) {
+    setSelected(u);
+    setModalStatus(u.status);
+    setModalName(u.customer_name || '');
+    setModalPeople(u.people?.toString() || '');
+    setModalNotes(u.notes || '');
+  }
+
+  async function saveModal() {
+    if (!selected) return;
+    if (selected.status !== 'free' && modalStatus === 'free') await pushHistory(selected);
+
+    const updated: Umbrella = {
+      ...selected,
+      status: modalStatus,
+      customer_name: modalStatus === 'free' ? undefined : (modalName || undefined),
+      people:        modalStatus === 'free' ? undefined : (parseInt(modalPeople) || undefined),
+      arrival_time:  modalStatus === 'free' ? undefined : (selected.arrival_time || getNow()),
+      notes:         modalStatus === 'free' ? undefined : (modalNotes || undefined),
+    };
+    setUmbrellas(p => p.map(u => u.id === updated.id ? updated : u));
+    setSelected(null);
+    await pushUpdate(updated);
+  }
+
+  async function quickRelease(u: Umbrella) {
+    await pushHistory(u);
+    const updated: Umbrella = { ...u, status: 'free', customer_name: undefined, people: undefined, arrival_time: undefined, notes: undefined };
+    setUmbrellas(p => p.map(um => um.id === updated.id ? updated : um));
+    await pushUpdate(updated);
+  }
+
+  function loginBoss() {
+    if (bossPass === BOSS_PASSWORD) {
+      setIsBoss(true); setShowLogin(false); setShowPanel(true); setBossPass('');
+    } else {
+      alert('Λάθος κωδικός');
+    }
+  }
+
+  // ── Stats ────────────────────────────────────────────────────────────────────
+  const nFree     = umbrellas.filter(u => u.status === 'free').length;
+  const nOccupied = umbrellas.filter(u => u.status === 'occupied').length;
+  const nReserved = umbrellas.filter(u => u.status === 'reserved').length;
+  const nPremOcc  = umbrellas.filter(u => u.premium && u.status === 'occupied').length;
+
+  const columns = ROW_COUNTS.map((_, ri) =>
+    umbrellas.filter(u => u.row_num === ri + 1)
+  );
+
+  // ── Loading ──────────────────────────────────────────────────────────────────
+  if (loading) return (
+    <div style={{ minHeight: '100dvh', background: C.navy, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+      <div style={{ fontSize: 40 }}>🌊</div>
+      <div style={{ color: C.gold, fontSize: 18, fontFamily: 'Georgia, serif' }}>Φόρτωση...</div>
+      <div style={{ color: C.textLight, fontSize: 12 }}>Σύνδεση με βάση δεδομένων...</div>
+    </div>
+  );
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  return (
+    <div style={{ minHeight: '100dvh', background: C.cream, fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
+
+      {/* ── Header ── */}
+      <div style={{ background: `linear-gradient(135deg, ${C.navy} 0%, ${C.navyLight} 100%)`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100 }}>
+        <div>
+          <div style={{ color: C.gold, fontSize: 20, fontWeight: 700, fontFamily: 'Georgia, serif', letterSpacing: 1 }}>ACQUA Beach</div>
+          <div style={{ color: C.textLight, fontSize: 10 }}>Διαχείριση Ομπρελών</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div
+            title={sync === 'ok' ? 'Συγχρονισμένο' : sync === 'busy' ? 'Αποθήκευση...' : 'Σφάλμα σύνδεσης'}
+            style={{ width: 9, height: 9, borderRadius: '50%', background: sync === 'ok' ? '#2ecc71' : sync === 'busy' ? C.gold : '#e74c3c', boxShadow: sync === 'ok' ? '0 0 0 3px #2ecc7130' : 'none' }}
+          />
+          <button onClick={() => isBoss ? setShowPanel(true) : setShowLogin(true)}
+            style={{ background: C.gold, color: C.navy, border: 'none', borderRadius: 8, padding: '7px 13px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            {isBoss ? '👔 Panel' : '🔐 Διαχείριση'}
+          </button>
         </div>
       </div>
 
-      {/* ── BEACH MAP ── */}
-      <div style={{ padding: '20px 12px 40px', maxWidth: 1100, margin: '0 auto' }}>
+      {/* ── Stats bar ── */}
+      <div style={{ background: C.navyLight, padding: '8px 0', display: 'flex', justifyContent: 'center', gap: 28 }}>
+        {([['Ελεύθερες', nFree, '#2ecc71'], ['Κατειλημμένες', nOccupied, '#e74c3c'], ['Κρατημένες', nReserved, C.gold]] as const).map(([l, v, c]) => (
+          <div key={l} style={{ textAlign: 'center' }}>
+            <div style={{ color: c, fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{v}</div>
+            <div style={{ color: C.textLight, fontSize: 10 }}>{l}</div>
+          </div>
+        ))}
+      </div>
 
-        {/* Legend */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          {(Object.entries(STATUS) as [UmbrellaStatus, typeof STATUS['free']][]).map(([key, cfg]) => (
-            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.white, borderRadius: 99, padding: '4px 12px', border: `1px solid ${cfg.border}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color }} />
-              <span style={{ fontSize: 11, color: cfg.text, fontWeight: 700, letterSpacing: '0.3px' }}>{cfg.label}</span>
+      {/* ── Sea ── */}
+      <div style={{ background: 'linear-gradient(180deg,#005bb5 0%,#0099dd 100%)', padding: '7px 0', textAlign: 'center', color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: 3 }}>
+        🌊 ΘΑΛΑΣΣΑ 🌊
+      </div>
+
+      {/* ── Grid ── */}
+      <div style={{ padding: '14px 8px 8px', overflowX: 'auto' }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'flex-start', minWidth: 'fit-content', margin: '0 auto' }}>
+          {columns.slice(0, 4).map((col, ri) => (
+            <div key={ri} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+              <div style={{ color: C.textMuted, fontSize: 10, fontWeight: 700, marginBottom: 2 }}>Σ{ri + 1}</div>
+              {col.map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onQuickRelease={quickRelease} />)}
             </div>
           ))}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: C.white, borderRadius: 99, padding: '4px 12px', border: `1px solid ${C.goldLight}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <span style={{ fontSize: 10 }}>⭐</span>
-            <span style={{ fontSize: 11, color: '#7d6025', fontWeight: 700 }}>Premium</span>
-          </div>
-          <span style={{ fontSize: 10, color: C.textLight, marginLeft: 4 }}>Κλικ → λεπτομέρειες</span>
+
+          <div style={{ width: 2, alignSelf: 'stretch', background: `linear-gradient(to bottom, transparent, ${C.gold}, transparent)`, margin: '24px 4px' }} />
+
+          {columns[4] && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+              <div style={{ color: C.gold, fontSize: 10, fontWeight: 700, marginBottom: 2 }}>⭐VIP</div>
+              {columns[4].map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onQuickRelease={quickRelease} />)}
+            </div>
+          )}
         </div>
+      </div>
 
-        {/* ── SEA ── */}
-        <div style={{ borderRadius: '20px 20px 0 0', overflow: 'hidden', marginBottom: 0 }}>
-          <div style={{ background: `linear-gradient(180deg, #0a4a6e 0%, #0e6b94 40%, #1a8ab0 70%, #38a8cc 100%)`, padding: '18px 16px 22px', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {/* Wave lines */}
-            {[0,1,2].map(i => (
-              <div key={i} style={{ position: 'absolute', bottom: i * 7, left: 0, right: 0, height: 2, background: `rgba(255,255,255,${0.06 + i * 0.04})`, borderRadius: 99 }} />
-            ))}
-            <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 9, fontWeight: 800, letterSpacing: '5px', textTransform: 'uppercase', position: 'relative', zIndex: 1 }}>
-              〰 ΘΑΛΑΣΣΑ 〰
-            </span>
+      {/* ── Bar ── */}
+      <div style={{ background: C.navy, padding: '7px 0', textAlign: 'center', color: C.gold, fontSize: 12, fontWeight: 600, letterSpacing: 3 }}>
+        🍹 BAR · ΕΙΣΟΔΟΣ
+      </div>
+
+      {/* ── Legend ── */}
+      <div style={{ padding: '10px 0', display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {Object.entries(STATUS).map(([k, v]) => (
+          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 10, height: 10, borderRadius: '50%', background: v.color }} />
+            <span style={{ fontSize: 11, color: C.textMuted }}>{v.label}</span>
           </div>
-          {/* Wave border */}
-          <div style={{ height: 12, background: `linear-gradient(180deg,#38a8cc,${C.sand})`, opacity: 0.6 }} />
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#e74c3c', color: '#fff', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>×</div>
+          <span style={{ fontSize: 11, color: C.textMuted }}>Γρήγορη αποδέσμευση</span>
         </div>
+      </div>
 
-        {/* ── BEACH GRID ── */}
-        <div style={{ background: `linear-gradient(180deg,#eee0c9 0%,${C.sand} 50%,${C.sandDark} 100%)`, boxShadow: `0 6px 24px rgba(13,43,62,0.15)`, borderBottom: `2px solid ${C.sandDark}`, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '14px 16px', minWidth: 'max-content', justifyContent: 'center' }}>
+      {/* ════════ MODALS ════════ */}
 
-            {/* Σ1–Σ4 */}
-            {[1,2,3,4].map(r => (
-              <div key={r} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
-                <div style={{ fontSize: 8, fontWeight: 800, color: C.navyLight, background: 'rgba(255,255,255,0.7)', borderRadius: 5, padding: '2px 6px', letterSpacing: '0.5px', border: `1px solid rgba(26,74,99,0.12)` }}>
-                  Σ{r}
-                </div>
-                {(rowMap[r] || []).map(u => (
-                  <UmbrellaCell key={u.id} umbrella={u}
-                    onClick={() => setSelected({ ...u })}
-                    onContextMenu={e => { e.preventDefault(); quickToggle(u, e); }}
-                  />
-                ))}
+      {/* Umbrella Modal */}
+      {selected && (
+        <div onClick={e => { if (e.target === e.currentTarget) setSelected(null); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200 }}>
+          <div style={{ background: C.cream, borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '6px 20px 36px', boxShadow: '0 -8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ width: 40, height: 4, background: C.sandDark, borderRadius: 2, margin: '10px auto 14px' }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{ width: 38, height: 38, borderRadius: '50%', background: STATUS[modalStatus].color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 700 }}>{selected.number}</div>
+              <div>
+                <div style={{ fontWeight: 700, color: C.text, fontSize: 15 }}>Ομπρέλα #{selected.number}</div>
+                <div style={{ fontSize: 11, color: C.textMuted }}>{selected.premium ? '⭐ Premium · ' : ''}{selected.arrival_time ? `Άφιξη: ${selected.arrival_time}` : 'Νέα είσοδος'}</div>
               </div>
-            ))}
+            </div>
 
-            {/* Διαχωριστής */}
-            <div style={{ width: 1, alignSelf: 'stretch', background: `linear-gradient(180deg,transparent,${C.gold}66,transparent)`, margin: '0 4px', flexShrink: 0 }} />
-
-            {/* Σ5 Premium */}
-            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
-              <div style={{ position: 'absolute', inset: '-8px -6px', borderRadius: 14, border: `1.5px solid ${C.gold}88`, background: `linear-gradient(180deg,rgba(201,168,76,0.12),rgba(201,168,76,0.04))`, pointerEvents: 'none', zIndex: 0 }} />
-              <div style={{ position: 'relative', zIndex: 1, background: `linear-gradient(135deg,${C.gold},${C.goldLight})`, color: C.navy, fontSize: 8, fontWeight: 800, padding: '2px 8px', borderRadius: 5, letterSpacing: '1px', textTransform: 'uppercase', whiteSpace: 'nowrap', boxShadow: `0 2px 6px rgba(201,168,76,0.4)` }}>
-                ⭐ VIP
-              </div>
-              {(rowMap[5] || []).map(u => (
-                <UmbrellaCell key={u.id} umbrella={u}
-                  onClick={() => setSelected({ ...u })}
-                  onContextMenu={e => { e.preventDefault(); quickToggle(u, e); }}
-                />
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              {(Object.keys(STATUS) as UmbrellaStatus[]).map(s => (
+                <button key={s} onClick={() => setModalStatus(s)} style={{
+                  flex: 1, padding: '11px 4px', borderRadius: 12,
+                  border: `2px solid ${modalStatus === s ? STATUS[s].color : STATUS[s].border}`,
+                  background: modalStatus === s ? STATUS[s].color : STATUS[s].bg,
+                  color: modalStatus === s ? '#fff' : STATUS[s].text,
+                  fontWeight: 700, fontSize: 11, cursor: 'pointer', transition: 'all 0.15s',
+                }}>{STATUS[s].label}</button>
               ))}
             </div>
 
-          </div>
-        </div>
+            {modalStatus !== 'free' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <input value={modalName} onChange={e => setModalName(e.target.value)}
+                  placeholder="Όνομα πελάτη (προαιρετικό)"
+                  style={{ padding: '13px', borderRadius: 12, border: `1.5px solid ${C.sandDark}`, fontSize: 15, background: C.white, color: C.text, outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+                <input value={modalPeople} onChange={e => setModalPeople(e.target.value)}
+                  placeholder="Αριθμός ατόμων" type="number" min="1"
+                  style={{ padding: '13px', borderRadius: 12, border: `1.5px solid ${C.sandDark}`, fontSize: 15, background: C.white, color: C.text, outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+                <input value={modalNotes} onChange={e => setModalNotes(e.target.value)}
+                  placeholder="Σημειώσεις (προαιρετικό)"
+                  style={{ padding: '13px', borderRadius: 12, border: `1.5px solid ${C.sandDark}`, fontSize: 15, background: C.white, color: C.text, outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+              </div>
+            )}
 
-        {/* ── BAR ── */}
-        <div style={{ background: C.navy, borderRadius: '0 0 20px 20px', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: `0 8px 24px rgba(13,43,62,0.25)` }}>
-          <span style={{ color: C.gold, fontSize: 16 }}>🍹</span>
-          <span style={{ color: C.gold, fontSize: 9, fontWeight: 800, letterSpacing: '4px', textTransform: 'uppercase' }}>BAR · ΕΙΣΟΔΟΣ</span>
-          <span style={{ color: C.gold, fontSize: 16 }}>🍹</span>
-        </div>
-      </div>
-
-      {/* ── BOSS LIST ── */}
-      {role === 'boss' && (
-        <div style={{ maxWidth: 1100, margin: '0 auto 48px', padding: '0 12px' }}>
-          <div style={{ background: C.white, borderRadius: 16, boxShadow: '0 4px 24px rgba(13,43,62,0.1)', overflow: 'hidden', border: `1px solid ${C.sand}` }}>
-            <div style={{ background: C.navy, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 3, height: 18, background: C.gold, borderRadius: 2 }} />
-              <span style={{ color: C.white, fontWeight: 700, fontSize: 13, letterSpacing: '1px', textTransform: 'uppercase' }}>Κατάσταση Ομπρελών</span>
-              <span style={{ marginLeft: 'auto', background: 'rgba(201,168,76,0.2)', border: `1px solid rgba(201,168,76,0.3)`, borderRadius: 99, padding: '2px 10px', fontSize: 11, color: C.gold, fontWeight: 700 }}>
-                {occupiedList.length} / {stats.total}
-              </span>
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button onClick={() => setSelected(null)} style={{ flex: 1, padding: '14px', borderRadius: 14, border: `1.5px solid ${C.sandDark}`, background: C.sand, color: C.textMuted, fontWeight: 600, fontSize: 15, cursor: 'pointer' }}>Ακύρωση</button>
+              <button onClick={saveModal} style={{ flex: 2, padding: '14px', borderRadius: 14, border: 'none', background: STATUS[modalStatus].color, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+                {modalStatus === 'free' ? '✅ Αποδέσμευση' : '💾 Αποθήκευση'}
+              </button>
             </div>
-            {occupiedList.length === 0
-              ? <div style={{ padding: '32px', textAlign: 'center', color: C.textLight, fontSize: 13 }}>Δεν υπάρχουν κατειλημμένες ή κρατημένες ομπρέλες</div>
-              : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
-                    <thead>
-                      <tr style={{ background: C.cream }}>
-                        {['Ομπρέλα', 'Κατάσταση', 'Άτομα', 'Πελάτης', 'Ώρα', 'Σημειώσεις'].map(h => (
-                          <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 700, color: C.navyLight, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.8px', borderBottom: `2px solid ${C.sand}` }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {occupiedList.map((u, i) => {
-                        const cfg = STATUS[u.status];
-                        return (
-                          <tr key={u.id} style={{ borderBottom: i < occupiedList.length - 1 ? `1px solid ${C.cream}` : 'none' }}>
-                            <td style={{ padding: '12px 16px', fontWeight: 800, color: C.navy }}>
-                              {u.premium && <span style={{ color: C.gold, marginRight: 4 }}>⭐</span>}#{u.number}
-                            </td>
-                            <td style={{ padding: '12px 16px' }}>
-                              <span style={{ background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}`, borderRadius: 99, padding: '3px 10px', fontSize: 11, fontWeight: 700 }}>{cfg.label}</span>
-                            </td>
-                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                              {u.people ? (
-                                <span style={{ background: C.navyLight, color: '#fff', borderRadius: 99, padding: '2px 10px', fontSize: 12, fontWeight: 700 }}>
-                                  👤 {u.people}
-                                </span>
-                              ) : '—'}
-                            </td>
-                            <td style={{ padding: '12px 16px', color: u.customerName ? C.text : C.textLight }}>{u.customerName || '—'}</td>
-                            <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: u.arrivalTime ? C.teal : C.textLight, fontWeight: 700 }}>{u.arrivalTime || '—'}</td>
-                            <td style={{ padding: '12px 16px', color: C.textMuted }}>{u.notes || '—'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
           </div>
         </div>
       )}
 
-      {/* ── HISTORY PANEL ── */}
-      {role === 'boss' && showHistory && (
-        <div style={{ maxWidth: 1100, margin: '0 auto 40px', padding: '0 12px' }}>
-          <div style={{ background: C.white, borderRadius: 16, boxShadow: '0 4px 24px rgba(13,43,62,0.1)', overflow: 'hidden', border: `1px solid ${C.sand}` }}>
-            <div style={{ background: C.navy, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 3, height: 18, background: C.gold, borderRadius: 2 }} />
-              <span style={{ color: C.white, fontWeight: 700, fontSize: 13, letterSpacing: '1px', textTransform: 'uppercase' }}>Ιστορικό Ημέρας</span>
-              <span style={{ color: C.textLight, fontSize: 11, marginLeft: 4 }}>{getToday()}</span>
-              {history.length > 0 && (
-                <button onClick={() => { if (confirm('Διαγραφή ιστορικού;')) { setHistory([]); localStorage.removeItem('acqua-history'); } }}
-                  style={{ marginLeft: 'auto', background: 'transparent', border: `1px solid rgba(231,76,60,0.35)`, color: '#e74c3c', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
-                  Διαγραφή
-                </button>
-              )}
+      {/* Boss Login */}
+      {showLogin && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <div style={{ background: C.cream, borderRadius: 18, padding: '28px 24px', width: '88%', maxWidth: 320 }}>
+            <div style={{ fontWeight: 700, fontSize: 17, color: C.navy, marginBottom: 18, textAlign: 'center' }}>🔐 Διαχειριστής</div>
+            <input type="password" value={bossPass} onChange={e => setBossPass(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && loginBoss()}
+              placeholder="Κωδικός" autoFocus
+              style={{ width: '100%', padding: '13px', borderRadius: 12, border: `1.5px solid ${C.sandDark}`, fontSize: 15, marginBottom: 14, boxSizing: 'border-box', outline: 'none' }} />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => { setShowLogin(false); setBossPass(''); }} style={{ flex: 1, padding: '13px', borderRadius: 12, border: 'none', background: C.sand, color: C.textMuted, fontWeight: 600, cursor: 'pointer' }}>Άκυρο</button>
+              <button onClick={loginBoss} style={{ flex: 1, padding: '13px', borderRadius: 12, border: 'none', background: C.navy, color: C.gold, fontWeight: 700, cursor: 'pointer' }}>Είσοδος</button>
             </div>
-            {history.length === 0
-              ? <div style={{ padding: '32px', textAlign: 'center', color: C.textLight, fontSize: 13 }}>Δεν υπάρχουν καταχωρήσεις ακόμα</div>
-              : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 520 }}>
-                    <thead>
-                      <tr style={{ background: C.cream }}>
-                        {['#', 'Ομπρέλα', 'Άτομα', 'Πελάτης', 'Άφιξη', 'Αναχώρηση', 'Σημειώσεις'].map(h => (
-                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: C.navyLight, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.8px', borderBottom: `2px solid ${C.sand}` }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.map((e, i) => (
-                        <tr key={e.id} style={{ borderBottom: i < history.length - 1 ? `1px solid ${C.cream}` : 'none', background: i % 2 === 0 ? C.white : C.cream }}>
-                          <td style={{ padding: '11px 14px', color: C.textLight, fontSize: 11 }}>{i + 1}</td>
-                          <td style={{ padding: '11px 14px', fontWeight: 800, color: C.navy }}>
-                            {e.premium && <span style={{ color: C.gold, marginRight: 4 }}>⭐</span>}#{e.umbrellaNumber}
-                          </td>
-                          <td style={{ padding: '11px 14px', textAlign: 'center' }}>
-                            {e.people ? <span style={{ background: C.navyLight, color: '#fff', borderRadius: 99, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>👤 {e.people}</span> : '—'}
-                          </td>
-                          <td style={{ padding: '11px 14px', color: e.customerName ? C.text : C.textLight }}>{e.customerName || '—'}</td>
-                          <td style={{ padding: '11px 14px', fontFamily: 'monospace', color: C.teal, fontWeight: 700 }}>{e.arrivalTime || '—'}</td>
-                          <td style={{ padding: '11px 14px', fontFamily: 'monospace', color: '#e74c3c', fontWeight: 700 }}>{e.departureTime}</td>
-                          <td style={{ padding: '11px 14px', color: C.textMuted }}>{e.notes || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
           </div>
         </div>
       )}
 
-      {/* ── UMBRELLA MODAL ── */}
-      {selected && (
-        <Overlay onClose={() => setSelected(null)}>
-          <div style={{ width: 'min(92vw,360px)' }}>
-            {/* Modal header */}
-            <div style={{ background: C.navy, borderRadius: '16px 16px 0 0', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `2px solid ${C.gold}` }}>
-              <div>
-                <div style={{ color: C.gold, fontWeight: 800, fontSize: 18, letterSpacing: '-0.3px' }}>
-                  ☂ Ομπρέλα #{selected.number}
-                  {selected.premium && <span style={{ marginLeft: 8, fontSize: 14 }}>⭐</span>}
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, marginTop: 2, letterSpacing: '0.5px' }}>
-                  Σειρά {selected.row} · Θέση {selected.col}
-                </div>
+      {/* Boss Panel */}
+      {showPanel && isBoss && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200 }}>
+          <div style={{ background: C.cream, borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 600, maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 32px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '6px 20px 0', borderBottom: `1px solid ${C.sand}` }}>
+              <div style={{ width: 40, height: 4, background: C.sandDark, borderRadius: 2, margin: '10px auto 12px' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 16, color: C.navy }}>👔 Panel Διαχείρισης</div>
+                <button onClick={() => setShowPanel(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: C.textMuted, lineHeight: 1 }}>×</button>
               </div>
-              <button onClick={() => setSelected(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 18, width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
-            </div>
-
-            <div style={{ padding: '20px' }}>
-              {/* Status */}
-              <div style={{ marginBottom: 16 }}>
-                <label style={lbl}>Κατάσταση</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {(Object.keys(STATUS) as UmbrellaStatus[]).map(s => {
-                    const cfg = STATUS[s];
-                    const active = selected.status === s;
-                    return (
-                      <button key={s} onClick={() => handleStatusChange(s)} style={{
-                        flex: 1, padding: '11px 4px', borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                        border: `2px solid ${active ? cfg.color : C.sand}`,
-                        background: active ? cfg.bg : C.cream,
-                        color: active ? cfg.text : C.textLight,
-                        boxShadow: active ? `0 0 0 3px ${cfg.color}18` : 'none',
-                        transition: 'all 0.15s', textTransform: 'uppercase', letterSpacing: '0.3px',
-                      }}>
-                        <div style={{ fontSize: 18, marginBottom: 3 }}>{s === 'free' ? '✓' : s === 'occupied' ? '●' : '◑'}</div>
-                        {cfg.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Premium toggle (boss only) */}
-              {role === 'boss' && (
-                <div style={{ marginBottom: 16 }}>
-                  <button onClick={() => setSelected(p => p ? { ...p, premium: !p.premium } : null)} style={{
-                    width: '100%', padding: '10px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                    border: `2px solid ${selected.premium ? C.gold : C.sand}`,
-                    background: selected.premium ? '#fdf8ec' : C.cream,
-                    color: selected.premium ? '#7d6025' : C.textLight,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    letterSpacing: '0.5px', textTransform: 'uppercase',
-                  }}>
-                    {selected.premium ? '⭐ Premium ομπρέλα' : '☆ Κανονική ομπρέλα'}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                {(['stats', 'history'] as const).map(t => (
+                  <button key={t} onClick={() => { setPanelTab(t); if (t === 'history') fetchHistory(); }}
+                    style={{ flex: 1, padding: '9px', borderRadius: 10, border: 'none', background: panelTab === t ? C.navy : C.sand, color: panelTab === t ? C.gold : C.textMuted, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                    {t === 'stats' ? '📊 Στατιστικά' : '📋 Ιστορικό'}
                   </button>
-                </div>
-              )}
+                ))}
+              </div>
+            </div>
 
-              {selected.status !== 'free' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px 24px' }}>
+              {panelTab === 'stats' && (
                 <>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={lbl}>Ώρα Άφιξης</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input type="time" value={selected.arrivalTime || ''} onChange={e => setSelected(p => p ? { ...p, arrivalTime: e.target.value } : null)} style={{ ...inp, flex: 1 }} />
-                      <button onClick={() => setSelected(p => p ? { ...p, arrivalTime: getNow() } : null)}
-                        style={{ background: `linear-gradient(135deg,${C.teal},${C.tealLight})`, color: C.white, border: 'none', borderRadius: 10, padding: '0 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                        Τώρα
-                      </button>
-                    </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
+                    {[
+                      { label: 'Ελεύθερες',     value: nFree,     color: '#2ecc71', icon: '☂️' },
+                      { label: 'Κατειλημμένες', value: nOccupied, color: '#e74c3c', icon: '🏖️' },
+                      { label: 'Κρατημένες',    value: nReserved,  color: C.gold,   icon: '📋' },
+                      { label: 'VIP ενεργές',   value: nPremOcc,   color: C.teal,   icon: '⭐' },
+                    ].map(s => (
+                      <div key={s.label} style={{ background: C.white, borderRadius: 14, padding: '14px', textAlign: 'center', border: `1px solid ${C.sand}` }}>
+                        <div style={{ fontSize: 24 }}>{s.icon}</div>
+                        <div style={{ fontSize: 28, fontWeight: 700, color: s.color }}>{s.value}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted }}>{s.label}</div>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={lbl}>Όνομα Πελάτη</label>
-                    <input placeholder="π.χ. Παπαδόπουλος" value={selected.customerName || ''} onChange={e => setSelected(p => p ? { ...p, customerName: e.target.value } : null)} style={inp} />
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <label style={lbl}>Αριθμός Ατόμων</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: `1.5px solid ${C.sand}`, borderRadius: 10, overflow: 'hidden', background: C.cream }}>
-                      <button onClick={() => setSelected(p => p ? { ...p, people: Math.max(1, (p.people || 1) - 1) } : null)}
-                        style={{ width: 44, height: 44, background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: C.navyLight, fontWeight: 700, flexShrink: 0 }}>−</button>
-                      <div style={{ flex: 1, textAlign: 'center', fontSize: 20, fontWeight: 800, color: C.navy }}>{selected.people || 1}</div>
-                      <button onClick={() => setSelected(p => p ? { ...p, people: (p.people || 1) + 1 } : null)}
-                        style={{ width: 44, height: 44, background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: C.navyLight, fontWeight: 700, flexShrink: 0 }}>+</button>
-                    </div>
-                  </div>
+
+                  <div style={{ fontWeight: 600, color: C.navy, marginBottom: 8, fontSize: 13 }}>Ενεργές τώρα:</div>
+                  {umbrellas.filter(u => u.status !== 'free').length === 0
+                    ? <div style={{ color: C.textMuted, fontSize: 13, textAlign: 'center', padding: '20px 0' }}>Όλες ελεύθερες ☂️</div>
+                    : umbrellas.filter(u => u.status !== 'free').map(u => (
+                      <div key={u.id} style={{ background: C.white, borderRadius: 12, padding: '11px 14px', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${STATUS[u.status].border}` }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <div style={{ width: 30, height: 30, borderRadius: '50%', background: STATUS[u.status].color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700 }}>{u.number}</div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{u.customer_name || 'Ανώνυμος'}{u.premium ? ' ⭐' : ''}</div>
+                            <div style={{ fontSize: 11, color: C.textMuted }}>
+                              {u.arrival_time ? `⏱ ${u.arrival_time}` : ''}
+                              {u.people ? ` · ${u.people} άτ.` : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={() => quickRelease(u)} style={{ background: '#e74c3c', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Αποδ.</button>
+                      </div>
+                    ))
+                  }
                 </>
               )}
 
-              <div style={{ marginBottom: 18 }}>
-                <label style={lbl}>Σημειώσεις</label>
-                <textarea placeholder="VIP, παιδιά, σκιά..." value={selected.notes || ''} onChange={e => setSelected(p => p ? { ...p, notes: e.target.value } : null)} rows={2} style={{ ...inp, resize: 'none' }} />
-              </div>
-
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={handleSave} style={{ flex: 1, background: `linear-gradient(135deg,${C.navy},${C.navyLight})`, color: C.gold, border: `1px solid rgba(201,168,76,0.3)`, borderRadius: 10, padding: '13px', fontWeight: 800, fontSize: 13, cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                  Αποθήκευση
-                </button>
-                <button onClick={() => setSelected(null)} style={{ padding: '13px 16px', background: C.cream, border: `1px solid ${C.sand}`, borderRadius: 10, color: C.textMuted, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-                  ✕
-                </button>
-              </div>
+              {panelTab === 'history' && (
+                <>
+                  <div style={{ fontWeight: 600, color: C.navy, marginBottom: 8, fontSize: 13 }}>Ιστορικό αποχωρήσεων:</div>
+                  {history.length === 0
+                    ? <div style={{ color: C.textMuted, fontSize: 13, textAlign: 'center', padding: '20px 0' }}>Δεν υπάρχει ιστορικό ακόμα</div>
+                    : history.map(h => (
+                      <div key={h.id} style={{ background: C.white, borderRadius: 12, padding: '11px 14px', marginBottom: 8, border: `1px solid ${C.sand}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <span style={{ fontWeight: 600, color: C.navy, fontSize: 13 }}>Ομπρέλα #{h.umbrella_number}{h.premium ? ' ⭐' : ''}</span>
+                          <span style={{ fontSize: 11, color: C.textMuted }}>{h.date}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: C.textMuted }}>
+                          {h.customer_name && <>{h.customer_name} · </>}
+                          {h.people && <>{h.people} άτομα · </>}
+                          {h.arrival_time && <>🕐 {h.arrival_time} → {h.departure_time}</>}
+                        </div>
+                        {h.notes && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>📝 {h.notes}</div>}
+                      </div>
+                    ))
+                  }
+                </>
+              )}
             </div>
           </div>
-        </Overlay>
-      )}
-
-      {/* ── BOSS LOGIN ── */}
-      {showLogin && (
-        <Overlay onClose={() => { setShowLogin(false); setPassword(''); setLoginError(''); }}>
-          <div style={{ width: 'min(90vw,300px)' }}>
-            <div style={{ background: C.navy, borderRadius: '16px 16px 0 0', padding: '28px 24px 20px', textAlign: 'center', borderBottom: `2px solid ${C.gold}` }}>
-              <div style={{ color: C.gold, fontWeight: 800, fontSize: 22, letterSpacing: '4px', textTransform: 'uppercase' }}>ACQUA</div>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, letterSpacing: '2px', textTransform: 'uppercase', marginTop: 2 }}>Beach Bar Since 1999</div>
-            </div>
-            <div style={{ padding: '24px 24px 28px', textAlign: 'center' }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: C.navy, marginBottom: 4, letterSpacing: '1px', textTransform: 'uppercase' }}>Είσοδος Αφεντικού</div>
-              <div style={{ color: C.textLight, fontSize: 12, marginBottom: 20 }}>Εισάγετε τον κωδικό σας</div>
-              <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} autoFocus
-                style={{ ...inp, textAlign: 'center', fontSize: 20, letterSpacing: 8, marginBottom: 8 }} />
-              {loginError && <div style={{ color: '#e74c3c', fontSize: 12, marginBottom: 8 }}>{loginError}</div>}
-              <button onClick={handleLogin} style={{ width: '100%', background: `linear-gradient(135deg,${C.gold},${C.goldLight})`, color: C.navy, border: 'none', borderRadius: 10, padding: '13px', fontWeight: 800, fontSize: 13, cursor: 'pointer', letterSpacing: '1.5px', textTransform: 'uppercase', marginTop: 4 }}>
-                Είσοδος
-              </button>
-              <div style={{ color: C.textLight, fontSize: 10, marginTop: 14, letterSpacing: '0.5px' }}>Demo: boss123</div>
-            </div>
-          </div>
-        </Overlay>
+        </div>
       )}
     </div>
   );
 }
-
-// ── UmbrellaCell ───────────────────────────────────────────
-function UmbrellaCell({ umbrella, onClick, onContextMenu }: {
-  umbrella: Umbrella;
-  onClick: () => void;
-  onContextMenu: (e: React.MouseEvent) => void;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const cfg = STATUS[umbrella.status];
-
-  return (
-    <button
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      title={`#${umbrella.number} — ${cfg.label}${umbrella.customerName ? ` · ${umbrella.customerName}` : ''}${umbrella.arrivalTime ? ` · ${umbrella.arrivalTime}` : ''}`}
-      style={{
-        position: 'relative',
-        width: 46, height: 54,
-        borderRadius: 10,
-        border: umbrella.premium
-          ? `2px solid ${hovered ? C.gold : 'rgba(201,168,76,0.55)'}`
-          : `2px solid ${hovered ? cfg.color : cfg.border}`,
-        background: umbrella.premium
-          ? `linear-gradient(160deg,#fdf8ec,${cfg.bg})`
-          : `linear-gradient(160deg,#fff,${cfg.bg})`,
-        boxShadow: hovered
-          ? `0 6px 16px ${cfg.color}55`
-          : umbrella.status !== 'free'
-            ? `0 2px 8px ${cfg.color}33`
-            : '0 1px 4px rgba(13,43,62,0.1)',
-        cursor: 'pointer',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-        transform: hovered ? 'translateY(-3px) scale(1.07)' : 'none',
-        transition: 'transform 0.15s, box-shadow 0.15s',
-        flexShrink: 0, padding: 0,
-      }}
-    >
-      <div style={{ fontSize: 17, lineHeight: 1 }}>☂️</div>
-      <div style={{
-        background: cfg.color, color: '#fff',
-        fontSize: umbrella.number > 9 ? 8 : 10,
-        fontWeight: 800, width: 19, height: 19, borderRadius: '50%',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 1px 3px ${cfg.color}55`, lineHeight: 1,
-      }}>
-        {umbrella.number}
-      </div>
-      {umbrella.premium && (
-        <div style={{ position: 'absolute', top: -4, right: -4, fontSize: 9, lineHeight: 1 }}>⭐</div>
-      )}
-      {umbrella.customerName && (
-        <div style={{ position: 'absolute', top: -5, left: -5, width: 14, height: 14, background: C.navy, borderRadius: '50%', border: `2px solid ${C.white}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 6, fontWeight: 800, color: C.gold }}>
-          {umbrella.customerName[0].toUpperCase()}
-        </div>
-      )}
-      {umbrella.status === 'occupied' && umbrella.arrivalTime && (
-        <div style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(-50%)', background: C.navy, color: C.gold, fontSize: 6, fontWeight: 700, padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap' }}>
-          {umbrella.arrivalTime}{umbrella.people ? ` ·${umbrella.people}👤` : ''}
-        </div>
-      )}
-    </button>
-  );
-}
-
-// ── Overlay ────────────────────────────────────────────────
-function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(13,43,62,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16 }}>
-      <div style={{ background: C.white, borderRadius: 16, boxShadow: `0 24px 80px rgba(13,43,62,0.4)`, maxWidth: '95vw', overflow: 'hidden' }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// ── Shared micro-styles ────────────────────────────────────
-const lbl: React.CSSProperties = {
-  display: 'block', fontSize: 10, fontWeight: 700, color: C.textMuted,
-  marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px',
-};
-const inp: React.CSSProperties = {
-  width: '100%', border: `1.5px solid ${C.sand}`, borderRadius: 10,
-  padding: '10px 12px', fontSize: 14, color: C.text, outline: 'none',
-  background: C.cream, boxSizing: 'border-box', fontFamily: 'inherit',
-};
