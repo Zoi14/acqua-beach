@@ -9,8 +9,8 @@ const supabase = createClient(
 
 type UmbrellaStatus = 'free' | 'occupied' | 'reserved';
 interface WaitlistEntry { id: string; customer_name: string; people?: number; preference: string; notes?: string; added_at: string; date: string; }
-interface HistoryEntry { id: string; umbrella_number: number; premium: boolean; customer_name?: string; people?: number; arrival_time?: string; departure_time: string; notes?: string; date: string; phone_reservation?: boolean; price?: number; }
-interface Umbrella { id: string; number: number; row_num: number; col_num: number; status: UmbrellaStatus; premium: boolean; people?: number; customer_name?: string; arrival_time?: string; notes?: string; phone_reservation?: boolean; }
+interface HistoryEntry { id: string; umbrella_number: number; premium: boolean; customer_name?: string; people?: number; arrival_time?: string; departure_time: string; notes?: string; date: string; phone_reservation?: boolean; price?: number; paid?: boolean; }
+interface Umbrella { id: string; number: number; row_num: number; col_num: number; status: UmbrellaStatus; premium: boolean; people?: number; customer_name?: string; arrival_time?: string; notes?: string; phone_reservation?: boolean; paid?: boolean; }
 
 const ROW_COUNTS = [8, 8, 8, 8, 5];
 const BOSS_PASSWORD = 'boss123';
@@ -67,6 +67,7 @@ function UmbrellaCell({ u, onTap, onRelease, assignMode, now: _now }: { u: Umbre
         style={{ width: 62, height: 72, borderRadius: 14, border: `2px solid ${bc}`, background: hov ? bc + '28' : (dc ? dc.bg : STATUS[u.status].bg), cursor: dimmed ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3px 2px', gap: 1, transition: 'all 0.15s', boxShadow: long ? '0 0 0 3px #dc262640' : hov ? `0 4px 14px ${bc}44` : '0 1px 4px rgba(0,0,0,0.08)', position: 'relative' }}>
         {u.premium && <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9, color: C.gold }}>⭐</span>}
         {u.phone_reservation && busy && <span style={{ position: 'absolute', top: 2, left: 3, fontSize: 9 }}>📞</span>}
+        {busy && <span style={{ position: 'absolute', bottom: 2, right: 3, fontSize: 11 }}>{u.paid ? '✅' : '❌'}</span>}
         {long && <span style={{ position: 'absolute', bottom: 2, left: 4, width: 7, height: 7, borderRadius: '50%', background: '#dc2626', display: 'block', animation: 'pulse 1.5s infinite' }} />}
         <div style={{ width: 22, height: 22, borderRadius: '50%', background: dc ? dc.border : STATUS[u.status].color, color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{u.number}</div>
         <div style={{ fontSize: 13 }}>{u.status === 'occupied' ? '🏖️' : u.status === 'reserved' ? '📋' : '☂️'}</div>
@@ -99,6 +100,7 @@ export default function BeachPage() {
   const [modalPeople, setModalPeople]     = useState('');
   const [modalNotes, setModalNotes]       = useState('');
   const [modalPhone, setModalPhone]       = useState(false);
+  const [modalPaid, setModalPaid]         = useState(false);
 
   const [isBoss, setIsBoss]       = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -171,7 +173,7 @@ export default function BeachPage() {
   async function pushHistory(u: Umbrella) {
     if (!u.arrival_time) return;
     const price = calcPrice(u.premium, !!u.phone_reservation);
-    const e: HistoryEntry = { id: `${Date.now()}`, umbrella_number: u.number, premium: u.premium, customer_name: u.customer_name, people: u.people, arrival_time: u.arrival_time, departure_time: getNow(), notes: u.notes, date: getToday(), phone_reservation: u.phone_reservation, price };
+    const e: HistoryEntry = { id: `${Date.now()}`, umbrella_number: u.number, premium: u.premium, customer_name: u.customer_name, people: u.people, arrival_time: u.arrival_time, departure_time: getNow(), notes: u.notes, date: getToday(), phone_reservation: u.phone_reservation, price, paid: u.paid };
     await supabase.from('history').insert(e);
     setHistory(p => [e, ...p].slice(0, 500));
   }
@@ -209,12 +211,13 @@ export default function BeachPage() {
     setModalPeople(assignWait ? (assignWait.people?.toString() || '') : (u.people?.toString() || ''));
     setModalNotes(assignWait ? (assignWait.notes || '') : (u.notes || ''));
     setModalPhone(assignWait ? false : (u.phone_reservation || false));
+    setModalPaid(assignWait ? false : (u.paid || false));
   }
 
   async function saveModal() {
     if (!selected) return;
     if (selected.status !== 'free' && modalStatus === 'free') await pushHistory(selected);
-    const updated: Umbrella = { ...selected, status: modalStatus, customer_name: modalStatus === 'free' ? undefined : (modalName || undefined), people: modalStatus === 'free' ? undefined : (parseInt(modalPeople) || undefined), arrival_time: modalStatus === 'free' ? undefined : (selected.arrival_time || getNow()), notes: modalStatus === 'free' ? undefined : (modalNotes || undefined), phone_reservation: modalStatus === 'free' ? undefined : modalPhone };
+    const updated: Umbrella = { ...selected, status: modalStatus, customer_name: modalStatus === 'free' ? undefined : (modalName || undefined), people: modalStatus === 'free' ? undefined : (parseInt(modalPeople) || undefined), arrival_time: modalStatus === 'free' ? undefined : (selected.arrival_time || getNow()), notes: modalStatus === 'free' ? undefined : (modalNotes || undefined), phone_reservation: modalStatus === 'free' ? undefined : modalPhone, paid: modalStatus === 'free' ? undefined : modalPaid };
     setUmbrellas(p => p.map(u => u.id === updated.id ? updated : u));
     if (assignWait && modalStatus === 'occupied') { await removeWait(assignWait.id); setAssignWait(null); }
     setSelected(null);
@@ -461,6 +464,9 @@ export default function BeachPage() {
                     <span style={{ fontSize:16 }}>📞</span> Τηλεφωνική κράτηση {modalPhone?'✅':''}
                     <span style={{ marginLeft:'auto',fontSize:11,opacity:0.7 }}>+{PRICE_PHONE}€</span>
                   </button>
+                  <button onClick={()=>setModalPaid(p=>!p)} style={{ padding:'12px',borderRadius:12,border:`2px solid ${modalPaid?'#16a34a':'#f87171'}`,background:modalPaid?'#f0fdf4':'#fef2f2',color:modalPaid?'#15803d':'#dc2626',fontWeight:700,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',gap:8,justifyContent:'center' }}>
+                    {modalPaid ? '✅ Πληρώθηκε' : '❌ Δεν έχει πληρώσει'}
+                  </button>
                   <div style={{ background:'#f0fdf4',border:'1px solid #86efac',borderRadius:10,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
                     <span style={{ fontSize:12,color:'#166534',fontWeight:600 }}>💰 Τιμή:</span>
                     <span style={{ fontSize:18,fontWeight:700,color:'#15803d' }}>{calcPrice(selected.premium,modalPhone)}€</span>
@@ -552,13 +558,30 @@ export default function BeachPage() {
                       <div key={s.l} style={{ background:C.white,borderRadius:14,padding:14,textAlign:'center',border:`1px solid ${C.sand}` }}><div style={{ fontSize:26 }}>{s.i}</div><div style={{ fontSize:30,fontWeight:700,color:s.c }}>{s.v}</div><div style={{ fontSize:11,color:C.textMuted }}>{s.l}</div></div>
                     ))}
                   </div>
+                  {/* Unpaid alert */}
+                  {umbrellas.filter(u=>u.status!=='free'&&!u.paid).length>0&&(
+                    <div style={{ background:'#fef2f2',border:'1.5px solid #f87171',borderRadius:12,padding:'10px 14px',marginBottom:12 }}>
+                      <div style={{ fontWeight:700,color:'#dc2626',fontSize:13,marginBottom:8 }}>❌ Δεν έχουν πληρώσει ({umbrellas.filter(u=>u.status!=='free'&&!u.paid).length})</div>
+                      {umbrellas.filter(u=>u.status!=='free'&&!u.paid).map(u=>(
+                        <div key={u.id} style={{ display:'flex',alignItems:'center',gap:8,marginBottom:6,background:'#fff',borderRadius:9,padding:'7px 10px' }}>
+                          <div style={{ width:26,height:26,borderRadius:'50%',background:'#e74c3c',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0 }}>{u.number}</div>
+                          <div style={{ flex:1 }}><div style={{ fontSize:12,fontWeight:600 }}>{u.customer_name||'Ανώνυμος'}{u.premium?' ⭐':''}{u.phone_reservation?' 📞':''}</div><div style={{ fontSize:10,color:C.textMuted }}>{u.arrival_time&&`${u.arrival_time}`}{u.people?` · ${u.people} άτ.`:''}</div></div>
+                          <div style={{ fontWeight:700,color:'#dc2626',fontSize:14 }}>{calcPrice(u.premium,!!u.phone_reservation)}€</div>
+                          <button onClick={async()=>{ const updated={...u,paid:true}; setUmbrellas(p=>p.map(x=>x.id===u.id?updated:x)); await pushUpdate(updated); }} style={{ background:'#16a34a',color:'#fff',border:'none',borderRadius:7,padding:'5px 9px',fontSize:11,fontWeight:700,cursor:'pointer' }}>✅</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {umbrellas.filter(u=>u.status!=='free').map(u=>(
-                    <div key={u.id} style={{ background:C.white,borderRadius:12,padding:'11px 14px',marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center',border:`1px solid ${STATUS[u.status].border}` }}>
+                    <div key={u.id} style={{ background:u.paid?'#f0fdf4':C.white,borderRadius:12,padding:'11px 14px',marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center',border:`1px solid ${u.paid?'#86efac':STATUS[u.status].border}` }}>
                       <div style={{ display:'flex',gap:10,alignItems:'center' }}>
                         <div style={{ width:30,height:30,borderRadius:'50%',background:STATUS[u.status].color,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700 }}>{u.number}</div>
-                        <div><div style={{ fontSize:13,fontWeight:600 }}>{u.customer_name||'Ανώνυμος'}{u.premium?' ⭐':''}</div><div style={{ fontSize:11,color:C.textMuted }}>{u.arrival_time&&`⏱ ${u.arrival_time}`}{u.people?` · ${u.people} άτ.`:''}</div></div>
+                        <div><div style={{ fontSize:13,fontWeight:600 }}>{u.customer_name||'Ανώνυμος'}{u.premium?' ⭐':''}{u.phone_reservation?' 📞':''}</div><div style={{ fontSize:11,color:C.textMuted }}>{u.arrival_time&&`⏱ ${u.arrival_time}`}{u.people?` · ${u.people} άτ.`:''} · {calcPrice(u.premium,!!u.phone_reservation)}€</div></div>
                       </div>
-                      <button onClick={()=>quickRelease(u)} style={{ background:'#e74c3c',color:'#fff',border:'none',borderRadius:8,padding:'6px 10px',fontSize:12,fontWeight:700,cursor:'pointer' }}>Αποδ.</button>
+                      <div style={{ display:'flex',gap:6,alignItems:'center' }}>
+                        <span style={{ fontSize:16 }}>{u.paid?'✅':'❌'}</span>
+                        <button onClick={()=>quickRelease(u)} style={{ background:'#e74c3c',color:'#fff',border:'none',borderRadius:8,padding:'6px 10px',fontSize:12,fontWeight:700,cursor:'pointer' }}>Αποδ.</button>
+                      </div>
                     </div>
                   ))}
                 </>
