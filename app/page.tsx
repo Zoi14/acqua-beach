@@ -303,15 +303,15 @@ export default function BeachPage() {
           {columns.slice(0, 4).map((col, ri) => (
             <div key={ri} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
               <div style={{ color: C.textMuted, fontSize: 9, fontWeight: 700, background: C.sand, borderRadius: 6, padding: '2px 7px' }}>Σ{ri+1}</div>
-              {/* First 5 (sea side) */}
-              {col.slice(0, 5).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
-              {/* Walkway */}
+              {/* First 6 (sea side) */}
+              {col.slice(0, 6).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
+              {/* Walkway between pos 6 and 7 (μεταξύ 22/30 και 23/31) */}
               <div style={{ width: '100%', height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', margin: '2px 0' }}>
                 <div style={{ position: 'absolute', left: 0, right: 0, height: 2, background: `repeating-linear-gradient(90deg,${C.sandDark} 0,${C.sandDark} 6px,transparent 6px,transparent 12px)` }} />
                 {ri === 0 && <span style={{ background: C.cream, padding: '0 4px', fontSize: 8, color: C.textMuted, fontWeight: 700, zIndex: 1, letterSpacing: 1 }}>ΔΙΑΔΡΟΜΟΣ</span>}
               </div>
-              {/* Last 3 (bar side) */}
-              {col.slice(5).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
+              {/* Last 2 (bar side) */}
+              {col.slice(6).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
             </div>
           ))}
 
@@ -330,8 +330,8 @@ export default function BeachPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
               <div style={{ color: C.gold, fontSize: 9, fontWeight: 700, background: '#fdf8ec', borderRadius: 6, padding: '2px 7px', border: `1px solid ${C.goldLight}` }}>⭐VIP</div>
               {columns[4].map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
-              {/* Empty space to align with bar-side of other columns */}
-              <div style={{ height: `${3 * 72 + 2 * 6 + 18 + 4}px` }} />
+              {/* Empty space to align with bar-side of other columns (2 rows + walkway) */}
+              <div style={{ height: `${2 * 72 + 1 * 6 + 18 + 4}px` }} />
             </div>
           )}
 
@@ -473,8 +473,8 @@ export default function BeachPage() {
                 <button onClick={()=>setShowPanel(false)} style={{ background:C.sand,border:'none',borderRadius:8,width:32,height:32,fontSize:18,cursor:'pointer',color:C.textMuted,display:'flex',alignItems:'center',justifyContent:'center' }}>×</button>
               </div>
               <div style={{ display:'flex',gap:6,marginBottom:12 }}>
-                {([['timers',`⏱${longStays.length>0?` ⚠️${longStays.length}`:''}`],['waitlist',`⏳${waitlist.length>0?` ${waitlist.length}`:''}`],...(isBoss?[['stats','📊'],['history','📋']]:[])]) as [string,string][]).map(([t,l])=>(
-                  <button key={t} onClick={()=>{setPanelTab(t as typeof panelTab);if(t==='history')fetchHistory();}} style={{ flex:1,padding:'8px 4px',borderRadius:10,border:'none',background:panelTab===t?C.navy:C.sand,color:panelTab===t?C.gold:C.textMuted,fontWeight:700,fontSize:12,cursor:'pointer' }}>{l}</button>
+                {([ ['timers', `⏱${longStays.length > 0 ? ` ⚠️${longStays.length}` : ''}`], ['waitlist', `⏳${waitlist.length > 0 ? ` ${waitlist.length}` : ''}`], ...(isBoss ? [['stats','📊'],['history','📋']] : []) ] as Array<[string,string]>).map(([t, l]) => (
+                  <button key={t} onClick={() => { setPanelTab(t as typeof panelTab); if (t === 'history') fetchHistory(); }} style={{ flex:1,padding:'8px 4px',borderRadius:10,border:'none',background:panelTab===t?C.navy:C.sand,color:panelTab===t?C.gold:C.textMuted,fontWeight:700,fontSize:12,cursor:'pointer' }}>{l}</button>
                 ))}
               </div>
             </div>
