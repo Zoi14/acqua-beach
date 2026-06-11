@@ -9,12 +9,19 @@ const supabase = createClient(
 
 type UmbrellaStatus = 'free' | 'occupied' | 'reserved';
 interface WaitlistEntry { id: string; customer_name: string; people?: number; preference: string; notes?: string; added_at: string; date: string; }
-interface HistoryEntry { id: string; umbrella_number: number; premium: boolean; customer_name?: string; people?: number; arrival_time?: string; departure_time: string; notes?: string; date: string; }
-interface Umbrella { id: string; number: number; row_num: number; col_num: number; status: UmbrellaStatus; premium: boolean; people?: number; customer_name?: string; arrival_time?: string; notes?: string; }
+interface HistoryEntry { id: string; umbrella_number: number; premium: boolean; customer_name?: string; people?: number; arrival_time?: string; departure_time: string; notes?: string; date: string; phone_reservation?: boolean; price?: number; }
+interface Umbrella { id: string; number: number; row_num: number; col_num: number; status: UmbrellaStatus; premium: boolean; people?: number; customer_name?: string; arrival_time?: string; notes?: string; phone_reservation?: boolean; }
 
 const ROW_COUNTS = [8, 8, 8, 8, 5];
 const BOSS_PASSWORD = 'boss123';
 const ALERT_HOURS = 3;
+const PRICE_STANDARD = 20;
+const PRICE_PREMIUM  = 25;
+const PRICE_PHONE    = 10;
+
+function calcPrice(premium: boolean, phone: boolean): number {
+  return (premium ? PRICE_PREMIUM : PRICE_STANDARD) + (phone ? PRICE_PHONE : 0);
+}
 
 const C = { navy: '#0d2b3e', navyLight: '#1a4a63', teal: '#1a6b7c', gold: '#c9a84c', goldLight: '#e4c46e', cream: '#f7f3ee', sand: '#e8ddd0', sandDark: '#d4c4b0', white: '#ffffff', text: '#1a2e3a', textMuted: '#5a7a8a', textLight: '#8fa8b5' };
 const STATUS = {
@@ -59,12 +66,13 @@ function UmbrellaCell({ u, onTap, onRelease, assignMode, now: _now }: { u: Umbre
       <button onClick={() => onTap(u)} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
         style={{ width: 62, height: 72, borderRadius: 14, border: `2px solid ${bc}`, background: hov ? bc + '28' : (dc ? dc.bg : STATUS[u.status].bg), cursor: dimmed ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3px 2px', gap: 1, transition: 'all 0.15s', boxShadow: long ? '0 0 0 3px #dc262640' : hov ? `0 4px 14px ${bc}44` : '0 1px 4px rgba(0,0,0,0.08)', position: 'relative' }}>
         {u.premium && <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 9, color: C.gold }}>⭐</span>}
-        {long && <span style={{ position: 'absolute', top: 2, left: 4, width: 7, height: 7, borderRadius: '50%', background: '#dc2626', display: 'block', animation: 'pulse 1.5s infinite' }} />}
+        {u.phone_reservation && busy && <span style={{ position: 'absolute', top: 2, left: 3, fontSize: 9 }}>📞</span>}
+        {long && <span style={{ position: 'absolute', bottom: 2, left: 4, width: 7, height: 7, borderRadius: '50%', background: '#dc2626', display: 'block', animation: 'pulse 1.5s infinite' }} />}
         <div style={{ width: 22, height: 22, borderRadius: '50%', background: dc ? dc.border : STATUS[u.status].color, color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{u.number}</div>
-        <div style={{ fontSize: 14 }}>{u.status === 'occupied' ? '🏖️' : u.status === 'reserved' ? '📋' : '☂️'}</div>
+        <div style={{ fontSize: 13 }}>{u.status === 'occupied' ? '🏖️' : u.status === 'reserved' ? '📋' : '☂️'}</div>
         {u.status === 'occupied' && u.arrival_time && <div style={{ fontSize: 8, color: dc!.text, fontWeight: 700, textAlign: 'center' }}>⏱{fmt(mins)}</div>}
         {u.status === 'reserved' && u.arrival_time && <div style={{ fontSize: 8, color: STATUS.reserved.text, fontWeight: 600 }}>{u.arrival_time}</div>}
-        {u.people && busy && <div style={{ fontSize: 7, color: C.textMuted, fontWeight: 600 }}>{u.people}👤</div>}
+        {busy && <div style={{ fontSize: 8, color: C.textMuted, fontWeight: 700 }}>{calcPrice(u.premium, !!u.phone_reservation)}€</div>}
       </button>
       {busy && !assignMode && (
         <button onClick={e => { e.stopPropagation(); onRelease(u); }}
@@ -85,11 +93,12 @@ export default function BeachPage() {
   const [sync, setSync]           = useState<'ok'|'busy'|'err'>('ok');
   const [now, setNow]             = useState(new Date());
 
-  const [selected, setSelected]       = useState<Umbrella | null>(null);
-  const [modalStatus, setModalStatus] = useState<UmbrellaStatus>('free');
-  const [modalName, setModalName]     = useState('');
-  const [modalPeople, setModalPeople] = useState('');
-  const [modalNotes, setModalNotes]   = useState('');
+  const [selected, setSelected]           = useState<Umbrella | null>(null);
+  const [modalStatus, setModalStatus]     = useState<UmbrellaStatus>('free');
+  const [modalName, setModalName]         = useState('');
+  const [modalPeople, setModalPeople]     = useState('');
+  const [modalNotes, setModalNotes]       = useState('');
+  const [modalPhone, setModalPhone]       = useState(false);
 
   const [isBoss, setIsBoss]       = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -161,7 +170,8 @@ export default function BeachPage() {
   }
   async function pushHistory(u: Umbrella) {
     if (!u.arrival_time) return;
-    const e: HistoryEntry = { id: `${Date.now()}`, umbrella_number: u.number, premium: u.premium, customer_name: u.customer_name, people: u.people, arrival_time: u.arrival_time, departure_time: getNow(), notes: u.notes, date: getToday() };
+    const price = calcPrice(u.premium, !!u.phone_reservation);
+    const e: HistoryEntry = { id: `${Date.now()}`, umbrella_number: u.number, premium: u.premium, customer_name: u.customer_name, people: u.people, arrival_time: u.arrival_time, departure_time: getNow(), notes: u.notes, date: getToday(), phone_reservation: u.phone_reservation, price };
     await supabase.from('history').insert(e);
     setHistory(p => [e, ...p].slice(0, 500));
   }
@@ -198,12 +208,13 @@ export default function BeachPage() {
     setModalName(assignWait ? assignWait.customer_name : (u.customer_name || ''));
     setModalPeople(assignWait ? (assignWait.people?.toString() || '') : (u.people?.toString() || ''));
     setModalNotes(assignWait ? (assignWait.notes || '') : (u.notes || ''));
+    setModalPhone(assignWait ? false : (u.phone_reservation || false));
   }
 
   async function saveModal() {
     if (!selected) return;
     if (selected.status !== 'free' && modalStatus === 'free') await pushHistory(selected);
-    const updated: Umbrella = { ...selected, status: modalStatus, customer_name: modalStatus === 'free' ? undefined : (modalName || undefined), people: modalStatus === 'free' ? undefined : (parseInt(modalPeople) || undefined), arrival_time: modalStatus === 'free' ? undefined : (selected.arrival_time || getNow()), notes: modalStatus === 'free' ? undefined : (modalNotes || undefined) };
+    const updated: Umbrella = { ...selected, status: modalStatus, customer_name: modalStatus === 'free' ? undefined : (modalName || undefined), people: modalStatus === 'free' ? undefined : (parseInt(modalPeople) || undefined), arrival_time: modalStatus === 'free' ? undefined : (selected.arrival_time || getNow()), notes: modalStatus === 'free' ? undefined : (modalNotes || undefined), phone_reservation: modalStatus === 'free' ? undefined : modalPhone };
     setUmbrellas(p => p.map(u => u.id === updated.id ? updated : u));
     if (assignWait && modalStatus === 'occupied') { await removeWait(assignWait.id); setAssignWait(null); }
     setSelected(null);
@@ -226,6 +237,8 @@ export default function BeachPage() {
   const today = getToday();
   const todayHistory = history.filter(h => h.date === today);
   const totalToday = todayHistory.length + umbrellas.filter(u => u.status === 'occupied').length;
+  const todayRevenue = todayHistory.reduce((s, h) => s + (h.price ?? calcPrice(h.premium, !!h.phone_reservation)), 0)
+    + umbrellas.filter(u => u.status === 'occupied').reduce((s, u) => s + calcPrice(u.premium, !!u.phone_reservation), 0);
   const nFree = umbrellas.filter(u => u.status === 'free').length;
   const nOcc  = umbrellas.filter(u => u.status === 'occupied').length;
   const nRes  = umbrellas.filter(u => u.status === 'reserved').length;
@@ -444,6 +457,14 @@ export default function BeachPage() {
                   <input value={modalName} onChange={e=>setModalName(e.target.value)} placeholder="Όνομα πελάτη" style={inp} />
                   <input value={modalPeople} onChange={e=>setModalPeople(e.target.value)} placeholder="Αριθμός ατόμων" type="number" min="1" style={inp} />
                   <input value={modalNotes} onChange={e=>setModalNotes(e.target.value)} placeholder="Σημειώσεις" style={inp} />
+                  <button onClick={()=>setModalPhone(p=>!p)} style={{ padding:'12px',borderRadius:12,border:`2px solid ${modalPhone?'#2563eb':'#cbd5e1'}`,background:modalPhone?'#eff6ff':'#f8fafc',color:modalPhone?'#1d4ed8':C.textMuted,fontWeight:700,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:8,justifyContent:'center' }}>
+                    <span style={{ fontSize:16 }}>📞</span> Τηλεφωνική κράτηση {modalPhone?'✅':''}
+                    <span style={{ marginLeft:'auto',fontSize:11,opacity:0.7 }}>+{PRICE_PHONE}€</span>
+                  </button>
+                  <div style={{ background:'#f0fdf4',border:'1px solid #86efac',borderRadius:10,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                    <span style={{ fontSize:12,color:'#166534',fontWeight:600 }}>💰 Τιμή:</span>
+                    <span style={{ fontSize:18,fontWeight:700,color:'#15803d' }}>{calcPrice(selected.premium,modalPhone)}€</span>
+                  </div>
                 </div>
               )}
               <div style={{ display:'flex',gap:10,marginTop:14 }}>
@@ -522,6 +543,10 @@ export default function BeachPage() {
 
               {panelTab==='stats'&&isBoss&&(
                 <>
+                  <div style={{ background:'#f0fdf4',borderRadius:14,padding:'14px 18px',marginBottom:12,border:'1.5px solid #86efac',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                    <div><div style={{ fontSize:11,color:'#166534',fontWeight:600 }}>💰 ΕΣΟΔΑ ΣΗΜΕΡΑ</div><div style={{ fontSize:9,color:'#16a34a',marginTop:2 }}>(ολοκληρωμένα + τρέχοντα)</div></div>
+                    <div style={{ fontSize:32,fontWeight:700,color:'#15803d' }}>{todayRevenue}€</div>
+                  </div>
                   <div style={{ display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginBottom:16 }}>
                     {[{l:'Σύνολο σήμερα',v:totalToday,c:C.teal,i:'👥'},{l:'Τώρα',v:nOcc,c:'#e74c3c',i:'🏖️'},{l:'Ελεύθερες',v:nFree,c:'#2ecc71',i:'☂️'},{l:'Κρατημένες',v:nRes,c:C.gold,i:'📋'}].map(s=>(
                       <div key={s.l} style={{ background:C.white,borderRadius:14,padding:14,textAlign:'center',border:`1px solid ${C.sand}` }}><div style={{ fontSize:26 }}>{s.i}</div><div style={{ fontSize:30,fontWeight:700,color:s.c }}>{s.v}</div><div style={{ fontSize:11,color:C.textMuted }}>{s.l}</div></div>
@@ -549,8 +574,8 @@ export default function BeachPage() {
                     ? <div style={{ color:C.textMuted,fontSize:13,textAlign:'center',padding:'20px 0' }}>Δεν υπάρχει ιστορικό</div>
                     : history.map(h=>(
                       <div key={h.id} style={{ background:h.date===today?C.white:'#f8f8f8',borderRadius:12,padding:'11px 14px',marginBottom:8,border:`1px solid ${h.date===today?C.sand:C.sandDark}` }}>
-                        <div style={{ display:'flex',justifyContent:'space-between',marginBottom:3 }}><span style={{ fontWeight:600,color:C.navy,fontSize:13 }}>Ομπρέλα #{h.umbrella_number}{h.premium?' ⭐':''}</span><span style={{ fontSize:11,color:C.textMuted }}>{h.date}</span></div>
-                        <div style={{ fontSize:12,color:C.textMuted }}>{h.customer_name&&<>{h.customer_name} · </>}{h.people&&<>{h.people} άτομα · </>}{h.arrival_time&&<>🕐 {h.arrival_time} → {h.departure_time}</>}</div>
+                        <div style={{ display:'flex',justifyContent:'space-between',marginBottom:3 }}><span style={{ fontWeight:600,color:C.navy,fontSize:13 }}>Ομπρέλα #{h.umbrella_number}{h.premium?' ⭐':''}{h.phone_reservation?' 📞':''}</span><span style={{ fontWeight:700,color:'#15803d',fontSize:13 }}>{h.price ?? calcPrice(h.premium, !!h.phone_reservation)}€</span></div>
+                        <div style={{ fontSize:12,color:C.textMuted }}>{h.customer_name&&<>{h.customer_name} · </>}{h.people&&<>{h.people} άτομα · </>}{h.arrival_time&&<>🕐 {h.arrival_time} → {h.departure_time}</>} · {h.date}</div>
                       </div>
                     ))
                   }
