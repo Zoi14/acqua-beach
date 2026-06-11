@@ -295,45 +295,52 @@ export default function BeachPage() {
       {/* Sea */}
       <div style={{ background: 'linear-gradient(180deg,#003d8a,#0077cc)', padding: '8px 0', textAlign: 'center', color: '#fff', fontSize: 12, fontWeight: 600, letterSpacing: 3 }}>🌊 ΘΑΛΑΣΣΑ 🌊</div>
 
-      {/* Grid */}
+      {/* Grid — two-section layout matching physical beach */}
       <div style={{ padding: '14px 8px 8px', overflowX: 'auto' }}>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'flex-start', minWidth: 'fit-content', margin: '0 auto' }}>
+        <div style={{ display: 'inline-flex', flexDirection: 'column', minWidth: 'fit-content', margin: '0 auto', alignItems: 'flex-start' }}>
 
-          {/* Σ1–Σ4: each column with a walkway gap after position 5 */}
-          {columns.slice(0, 4).map((col, ri) => (
-            <div key={ri} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
-              <div style={{ color: C.textMuted, fontSize: 9, fontWeight: 700, background: C.sand, borderRadius: 6, padding: '2px 7px' }}>Σ{ri+1}</div>
-              {/* First 6 (sea side) */}
-              {col.slice(0, 6).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
-              {/* Walkway between pos 6 and 7 (μεταξύ 22/30 και 23/31) */}
-              <div style={{ width: '100%', height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', margin: '2px 0' }}>
-                <div style={{ position: 'absolute', left: 0, right: 0, height: 2, background: `repeating-linear-gradient(90deg,${C.sandDark} 0,${C.sandDark} 6px,transparent 6px,transparent 12px)` }} />
-                {ri === 0 && <span style={{ background: C.cream, padding: '0 4px', fontSize: 8, color: C.textMuted, fontWeight: 700, zIndex: 1, letterSpacing: 1 }}>ΔΙΑΔΡΟΜΟΣ</span>}
+          {/* ── ΘΑΛΑΣΣΑ ΠΛΕΥΡΑ (rows 1-5) ── */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            {columns.slice(0, 4).map((col, ri) => (
+              <div key={ri} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                <div style={{ color: C.textMuted, fontSize: 9, fontWeight: 700, background: C.sand, borderRadius: 6, padding: '2px 7px' }}>Σ{ri+1}</div>
+                {col.slice(0, 5).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
               </div>
-              {/* Last 2 (bar side) */}
-              {col.slice(6).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
-            </div>
-          ))}
-
-          {/* Vertical divider before VIP */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignSelf: 'stretch', margin: '20px 4px', gap: 0, alignItems: 'center' }}>
-            {/* Top part: solid gold line (sea side, rows 1-5, aligns with VIP umbrellas) */}
-            <div style={{ width: 2, flex: '0 0 auto', height: `${5 * 72 + 4 * 6 + 16}px`, background: `linear-gradient(to bottom,transparent,${C.gold},${C.gold})` }} />
-            {/* Walkway gap label */}
-            <div style={{ fontSize: 7, color: C.textMuted, fontWeight: 700, writingMode: 'vertical-rl', letterSpacing: 1, padding: '4px 0', opacity: 0.7 }}>ΔΙΑΔΡ.</div>
-            {/* Bottom part: dashed (bar side rows 6-8, no VIP here) */}
-            <div style={{ width: 2, flex: 1, background: `repeating-linear-gradient(to bottom,${C.sandDark} 0,${C.sandDark} 6px,transparent 6px,transparent 12px)` }} />
+            ))}
+            {/* Gold divider Σ4 | VIP */}
+            <div style={{ width: 2, alignSelf: 'stretch', background: `linear-gradient(to bottom, transparent, ${C.gold} 15%, ${C.gold})`, margin: '18px 2px 0' }} />
+            {/* VIP */}
+            {columns[4] && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                <div style={{ color: C.gold, fontSize: 9, fontWeight: 700, background: '#fdf8ec', borderRadius: 6, padding: '2px 7px', border: `1px solid ${C.goldLight}` }}>⭐VIP</div>
+                {columns[4].map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
+              </div>
+            )}
           </div>
 
-          {/* VIP column (5 umbrellas, sea-side aligned) */}
-          {columns[4] && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
-              <div style={{ color: C.gold, fontSize: 9, fontWeight: 700, background: '#fdf8ec', borderRadius: 6, padding: '2px 7px', border: `1px solid ${C.goldLight}` }}>⭐VIP</div>
-              {columns[4].map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
-              {/* Empty space to align with bar-side of other columns (2 rows + walkway) */}
-              <div style={{ height: `${2 * 72 + 1 * 6 + 18 + 4}px` }} />
+          {/* ── ΟΡΙΖΟΝΤΙΟΣ ΔΙΑΔΡΟΜΟΣ ── */}
+          <div style={{ alignSelf: 'stretch', height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', margin: '6px 0' }}>
+            <div style={{ position: 'absolute', left: 0, right: 0, height: 2, background: `repeating-linear-gradient(90deg,${C.sandDark} 0,${C.sandDark} 6px,transparent 6px,transparent 12px)` }} />
+            <span style={{ background: C.cream, padding: '0 8px', fontSize: 8, color: C.textMuted, fontWeight: 700, zIndex: 1, letterSpacing: 1 }}>— ΔΙΑΔΡΟΜΟΣ —</span>
+          </div>
+
+          {/* ── BAR ΠΛΕΥΡΑ (rows 6-8): Σ1 Σ2 Σ3 | κάθετος διάδρ. | Σ4 ── */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            {/* Σ1-Σ3 bar side */}
+            {columns.slice(0, 3).map((col, ri) => (
+              <div key={ri} style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+                {col.slice(5).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
+              </div>
+            ))}
+            {/* Κάθετος διάδρομος */}
+            <div style={{ width: 30, height: `${3*72 + 2*6}px`, background: C.sand, border: `1.5px dashed ${C.sandDark}`, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ writingMode: 'vertical-rl', fontSize: 7, fontWeight: 700, color: C.textMuted, letterSpacing: 1 }}>ΔΙΑΔΡ.</span>
             </div>
-          )}
+            {/* Σ4 bar side */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+              {columns[3].slice(5).map(u => <UmbrellaCell key={u.id} u={u} onTap={openModal} onRelease={quickRelease} assignMode={!!assignWait} now={now} />)}
+            </div>
+          </div>
 
         </div>
       </div>
